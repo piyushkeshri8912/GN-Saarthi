@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+@variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: var(--font-sans), ui-sans-serif, system-ui;
+  --font-display: var(--font-display), sans-serif;
+  
+  /* Premium Monochrome Palette variables mapping */
+  --color-brand-crimson: #27272a; /* Zinc 800 */
+  --color-brand-maroon: #09090b;  /* Zinc 950 */
+  --color-brand-gold: #ffffff;    /* Pure White */
+  --color-brand-amber: #e4e4e7;   /* Zinc 200 */
+
+  /* Override Slate color scheme with Zinc for clean global monochrome design */
+  --color-slate-50: var(--color-zinc-50);
+  --color-slate-100: var(--color-zinc-100);
+  --color-slate-200: var(--color-zinc-200);
+  --color-slate-300: var(--color-zinc-300);
+  --color-slate-400: var(--color-zinc-400);
+  --color-slate-500: var(--color-zinc-500);
+  --color-slate-600: var(--color-zinc-600);
+  --color-slate-700: var(--color-zinc-700);
+  --color-slate-800: var(--color-zinc-800);
+  --color-slate-850: #e4e4e7; /* Light mode border default (Zinc 200) */
+  --color-slate-900: var(--color-zinc-900);
+  --color-slate-950: var(--color-zinc-950);
+}
+
+@layer base {
+  body {
+    @apply bg-white text-zinc-950 font-sans transition-colors duration-200;
+  }
+  
+  .dark body {
+    @apply bg-zinc-950 text-zinc-100;
+  }
+  
+  ::selection {
+    @apply bg-zinc-200 text-zinc-950;
+  }
+  
+  .dark ::selection {
+    @apply bg-zinc-800 text-zinc-50;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display tracking-tight;
+  }
+}
+
+/* Custom Scrollbar Styles (Monochrome) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #e4e4e7; /* zinc-200 in light mode */
+  border-radius: 9999px;
+  border: 1px solid #ffffff;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #27272a; /* zinc-800 in dark mode */
+  border: 1px solid #09090b; /* zinc-950 */
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #d4d4d8;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
