@@ -8,7 +8,7 @@ export default function ChatPage() {
   const { messages, loading, sendMessage } = useChat();
 
   return (
-    <div className="flex h-screen flex-col bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors duration-200 overflow-hidden pb-0 sm:pb-4">
+    <div className="flex h-full flex-col bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 transition-colors duration-200 overflow-hidden pb-0 sm:pb-4">
       <Navbar />
       
       <main className="flex-1 px-0 py-0 sm:px-6 sm:py-4 lg:px-8 max-w-7xl mx-auto w-full overflow-hidden">

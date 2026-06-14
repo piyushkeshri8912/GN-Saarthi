@@ -41,7 +41,7 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="relative min-h-screen flex flex-col justify-between bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 overflow-y-auto font-sans transition-colors duration-200">
+    <div className="relative h-full flex flex-col justify-between bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 overflow-hidden font-sans transition-colors duration-200">
       {/* Top Corporate Branding Header */}
       <header className="w-full border-b border-zinc-200 dark:border-zinc-800 bg-white/60 dark:bg-zinc-950/60 backdrop-blur-md px-6 py-4 z-10 transition-colors">
         <div className="mx-auto max-w-7xl flex items-center justify-between">
@@ -68,7 +68,7 @@ export default function LoginPage() {
       </header>
 
       {/* Main Grid Body */}
-      <main className="flex-1 flex items-center justify-center py-12 px-6 sm:px-12 max-w-7xl mx-auto w-full z-10 gap-16">
+      <main className="flex-1 overflow-y-auto flex items-center justify-center py-6 sm:py-12 px-6 sm:px-12 max-w-7xl mx-auto w-full z-10 gap-16">
                {/* Left Columns - Hero Info Panel (Visible on large screens) */}
         <div className="hidden lg:flex flex-col justify-center max-w-lg space-y-6 flex-1">
           <div className="space-y-4">
