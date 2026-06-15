@@ -174,8 +174,12 @@ export default function ChatWindow({ messages, loading, onSendMessage }: ChatWin
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSubmit(e);
+                // Check if device has a touch screen or is mobile-sized
+                const isMobile = window.matchMedia("(pointer: coarse)").matches || window.innerWidth < 768;
+                if (!isMobile) {
+                  e.preventDefault();
+                  handleSubmit(e);
+                }
               }
             }}
             placeholder="Ask queries related to IIT Gandhinagar"
