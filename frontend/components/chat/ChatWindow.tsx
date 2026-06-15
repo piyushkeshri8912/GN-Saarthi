@@ -178,7 +178,7 @@ export default function ChatWindow({ messages, loading, onSendMessage }: ChatWin
                 handleSubmit(e);
               }
             }}
-            placeholder="Search regulations, handbooks, and calendars..."
+            placeholder="Ask queries related to IIT Gandhinagar"
             disabled={loading}
             className="w-full rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 py-3 pr-10 pl-3.5 text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:border-zinc-400 dark:focus:border-zinc-600 focus:outline-none focus:ring-1 focus:ring-zinc-450 dark:focus:ring-zinc-600 disabled:opacity-50 transition-colors resize-none overflow-y-auto max-h-40 min-h-[44px]"
           />

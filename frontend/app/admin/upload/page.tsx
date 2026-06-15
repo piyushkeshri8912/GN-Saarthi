@@ -154,25 +154,27 @@ export default function DocumentManagementPage() {
         <div ref={topRef} />
         
         {/* Header Block */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <span className="flex items-center gap-1 text-[10px] uppercase font-black tracking-widest text-zinc-500 dark:text-zinc-400">
-              <Layers className="h-3.5 w-3.5" /> Portal Database Console
-            </span>
-            <h1 className="text-3xl font-extrabold tracking-tight text-zinc-900 dark:text-white sm:text-4xl">
-              Reference Catalog Ingestion
-            </h1>
-            <p className="text-xs text-zinc-500 dark:text-slate-400 mt-1 max-w-2xl leading-relaxed">
-              Upload PDF documents or images to parse, split, embed, and index them into Qdrant Cloud. Students can query these materials instantly.
-            </p>
+        <div>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <span className="flex items-center gap-1 text-[10px] uppercase font-black tracking-widest text-zinc-500 dark:text-zinc-400">
+                <Layers className="h-3.5 w-3.5" /> Database Console
+              </span>
+              <h1 className="text-3xl font-extrabold tracking-tight text-zinc-900 dark:text-white sm:text-4xl">
+                Docs Ingestion
+              </h1>
+            </div>
+            <button
+              onClick={fetchDocuments}
+              disabled={loading}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 disabled:opacity-50 cursor-pointer shadow-sm transition-all duration-200"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            </button>
           </div>
-          <button
-            onClick={fetchDocuments}
-            disabled={loading}
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 disabled:opacity-50 cursor-pointer shadow-md transition-all duration-200"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          </button>
+          <p className="text-xs text-zinc-500 dark:text-slate-450 mt-3 max-w-2xl leading-relaxed">
+            Upload PDF documents or images
+          </p>
         </div>
 
         {/* Tabs Selection */}
@@ -185,7 +187,7 @@ export default function DocumentManagementPage() {
                 : "border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300"
             }`}
           >
-            Reference Catalog
+            Docs
           </button>
           <button
             onClick={() => setActiveTab("links")}
@@ -195,7 +197,7 @@ export default function DocumentManagementPage() {
                 : "border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-300"
             }`}
           >
-            Quick Links Manager
+            Quick Links
           </button>
         </div>
 
@@ -207,7 +209,7 @@ export default function DocumentManagementPage() {
             <div className="lg:col-span-1 space-y-6 w-full min-w-0">
               <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/10 p-4 sm:p-6 backdrop-blur-xl space-y-4 w-full min-w-0">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                  Index Reference Catalog
+                  Index Reference Docs
                 </h3>
                 <PDFUploader onUploadSuccess={fetchDocuments} />
               </div>
@@ -217,7 +219,7 @@ export default function DocumentManagementPage() {
             <div className="lg:col-span-2 space-y-4 w-full min-w-0">
               <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/10 p-4 sm:p-6 backdrop-blur-xl space-y-4 w-full min-w-0">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
-                  Indexed File Index
+                  Indexed File
                 </h3>
 
                 {loading && documents.length === 0 ? (
@@ -299,7 +301,7 @@ export default function DocumentManagementPage() {
                     Fallback Quick Links Directory
                   </h3>
                   <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-                    Manage external websites, portal URLs, and contact forms that the RAG bot refers to when query context is not found in catalog documents.
+                    RAG bot refers to when query context is not found in Reference Docs.
                   </p>
                 </div>
                 {isEditing === null && (

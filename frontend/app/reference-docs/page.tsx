@@ -93,25 +93,27 @@ export default function ReferenceDocsPage() {
       <main className="flex-1 px-4 py-8 sm:px-6 lg:px-8 max-w-4xl mx-auto w-full space-y-8">
         
         {/* Header Block */}
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-zinc-200 dark:border-zinc-800 pb-6">
-          <div>
-            <span className="flex items-center gap-1 text-[10px] uppercase font-black tracking-widest text-zinc-500 dark:text-zinc-400">
-              <Layers className="h-3.5 w-3.5" /> Campus Reference Library
-            </span>
-            <h1 className="text-3xl font-extrabold tracking-tight text-zinc-900 dark:text-white sm:text-4xl">
-              Reference Docs
-            </h1>
-            <p className="text-xs text-zinc-500 dark:text-slate-450 mt-1.5 max-w-2xl leading-relaxed">
-              Read-only index of official college documents, coursework regulations, and bus timings. Click any document to view or download.
-            </p>
+        <div className="border-b border-zinc-200 dark:border-zinc-800 pb-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <span className="flex items-center gap-1 text-[10px] uppercase font-black tracking-widest text-zinc-500 dark:text-zinc-400">
+                <Layers className="h-3.5 w-3.5" /> Reference Library
+              </span>
+              <h1 className="text-3xl font-extrabold tracking-tight text-zinc-900 dark:text-white sm:text-4xl">
+                Reference Docs
+              </h1>
+            </div>
+            <button
+              onClick={fetchDocuments}
+              disabled={loading}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 disabled:opacity-50 cursor-pointer shadow-sm transition-all duration-200"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            </button>
           </div>
-          <button
-            onClick={fetchDocuments}
-            disabled={loading}
-            className="flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/40 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 disabled:opacity-50 cursor-pointer shadow-sm transition-all duration-200"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          </button>
+          <p className="text-xs text-zinc-500 dark:text-slate-450 mt-3 max-w-2xl leading-relaxed">
+            Read-only index of official college documents
+          </p>
         </div>
 
         {/* Documents list */}
