@@ -23,6 +23,7 @@ class Settings(BaseSettings):
         extra="ignore"
     )
 
+
     @property
     def firebase_service_account_dict(self) -> Dict[str, Any]:
         try:
@@ -36,3 +37,17 @@ class Settings(BaseSettings):
             raise ValueError(f"Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON: {e}")
 
 settings = Settings()
+
+# Configure GOOGLE_APPLICATION_CREDENTIALS dynamically for Google GenAI / LlamaIndex
+if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
+    try:
+        sa_dict = settings.firebase_service_account_dict
+        import tempfile
+        # Create a temp file that survives program runtime
+        temp_file = tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".json")
+        json.dump(sa_dict, temp_file)
+        temp_file.close()
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file.name
+    except Exception as e:
+        import sys
+        print(f"Warning: Failed to dynamically configure GOOGLE_APPLICATION_CREDENTIALS: {e}", file=sys.stderr)

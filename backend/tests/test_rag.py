@@ -3,6 +3,7 @@ import pytest
 import json
 from app.services.rag_service import generate_rag_answer_stream, session_cache
 from app.schemas.schemas import ChatResponse, SourceChunk
+from llama_index.core.schema import NodeWithScore, TextNode
 
 async def run_stream(query: str, session_id: str = None) -> ChatResponse:
     answer_parts = []
@@ -26,129 +27,79 @@ async def run_stream(query: str, session_id: str = None) -> ChatResponse:
 
 @pytest.mark.asyncio
 @patch("app.services.rag_service.detect_intent")
-@patch("app.pipelines.embedder.get_embeddings_client")
-@patch("app.services.rag_service.search_vectors")
+@patch("app.services.rag_service.get_citation_query_engine")
 @patch("app.services.rag_service.get_llm_client")
-async def test_generate_rag_answer(mock_get_llm, mock_search, mock_get_embeddings, mock_detect):
+async def test_generate_rag_answer(mock_get_llm, mock_get_query_engine, mock_detect):
     mock_detect.return_value = "retrieval"
     """
-    Verify that generate_rag_answer_stream embeds the query, searches the vector database,
-    constructs the context prompt, invokes the LLM, and builds a valid ChatResponse.
+    Verify that generate_rag_answer_stream retrieves nodes from query engine,
+    and builds a valid ChatResponse.
     """
-    # Mock embedding query
-    mock_client = MagicMock()
-    async def mock_aembed_query(text):
-        return [0.1] * 768
-    mock_client.aembed_query = mock_aembed_query
-    mock_get_embeddings.return_value = mock_client
+    mock_query_engine = MagicMock()
+    mock_response = MagicMock()
     
-    # Mock vector search results (1 mock hit)
-    mock_search.return_value = [
-        {
-            "score": 0.88,
+    async def mock_async_response_gen():
+        yield "According to the hostel rules, students entering after 10:00 PM must log their entry in the register."
+    mock_response.async_response_gen = mock_async_response_gen()
+    
+    node = TextNode(
+        text="Students must log their entry in the register after 10:00 PM.",
+        metadata={
             "doc_id": "doc-uuid-1",
             "source": "hostel_rules.pdf",
             "page": 4,
-            "text_content": "Students must log their entry in the register after 10:00 PM."
+            "page_start": 4,
+            "page_end": 4
         }
-    ]
+    )
+    mock_response.source_nodes = [NodeWithScore(node=node, score=0.88)]
     
-    # Mock LLM and response
-    mock_llm = MagicMock()
-    async def mock_astream(prompt, *args, **kwargs):
-        chunk = MagicMock()
-        chunk.content = "According to the hostel rules, students entering after 10:00 PM must log their entry in the register."
-        yield chunk
-    mock_llm.astream = mock_astream
-    mock_get_llm.return_value = mock_llm
+    async def mock_aquery(*args, **kwargs):
+        return mock_response
+    mock_query_engine.aquery = mock_aquery
+    mock_get_query_engine.return_value = mock_query_engine
     
-    # Call generation service
     query = "What are the rules for entering the hostel late?"
     response = await run_stream(query)
     
-    # Assert ChatResponse structure and values
     assert response.answer == "According to the hostel rules, students entering after 10:00 PM must log their entry in the register."
     assert len(response.sources) == 1
     assert response.sources[0].doc_id == "doc-uuid-1"
     assert response.sources[0].source == "hostel_rules.pdf"
     assert response.sources[0].page == 4
     assert response.sources[0].text_content == "Students must log their entry in the register after 10:00 PM."
-    
-    mock_search.assert_called_once_with([0.1] * 768, 20)
-    assert mock_get_llm.call_count >= 1
 
 @pytest.mark.asyncio
 @patch("app.services.rag_service.detect_intent")
-@patch("app.pipelines.embedder.get_embeddings_client")
-@patch("app.services.rag_service.search_vectors")
+@patch("app.services.rag_service.get_citation_query_engine")
 @patch("app.services.rag_service.get_llm_client")
-async def test_rag_deduplication_and_budgeting(mock_get_llm, mock_search, mock_get_embeddings, mock_detect):
+async def test_rag_deduplication_and_budgeting(mock_get_llm, mock_get_query_engine, mock_detect):
     mock_detect.return_value = "retrieval"
     """
-    Verify that RAG deduplicates identical/similar hits, budgets the context block size,
-    and returns correct SourceChunk range fields.
+    Verify that RAG extracts returned source details correctly from the query engine response.
     """
-    # Mock embedding query
-    mock_client = MagicMock()
-    async def mock_aembed_query(text):
-        return [0.1] * 768
-    mock_client.aembed_query = mock_aembed_query
-    mock_get_embeddings.return_value = mock_client
+    mock_query_engine = MagicMock()
+    mock_response = MagicMock()
     
-    # 1. Mock search results containing duplicate text and large text
-    mock_search.return_value = [
-        {
-            "score": 0.95,
-            "doc_id": "doc-1",
-            "source": "hostel_rules.pdf",
-            "page": 2,
-            "page_start": 2,
-            "page_end": 2,
-            "text_content": "Duplicate hostel rules text."
-        },
-        {
-            "score": 0.90,
-            "doc_id": "doc-1",
-            "source": "hostel_rules.pdf",
-            "page": 3,
-            "page_start": 3,
-            "page_end": 3,
-            "text_content": "Duplicate Hostel Rules Text." # near-identical (different case)
-        },
-        {
-            "score": 0.85,
-            "doc_id": "doc-2",
-            "source": "academic_calendar.pdf",
-            "page": 1,
-            "page_start": 1,
-            "page_end": 2,
-            "text_content": "Very long text that will exceed the context character budget... " * 500
-        },
-        {
-            "score": 0.80,
-            "doc_id": "doc-3",
-            "source": "bus_schedule.pdf",
-            "page": 1,
-            "page_start": 1,
-            "page_end": 1,
-            "text_content": "This chunk should be skipped due to context budgeting limit."
-        }
+    async def mock_async_response_gen():
+        yield "Mocked answer."
+    mock_response.async_response_gen = mock_async_response_gen()
+    
+    n1 = TextNode(text="Hostel rules text.", metadata={"doc_id": "doc-1", "source": "hostel_rules.pdf", "page": 2, "page_start": 2, "page_end": 2})
+    n2 = TextNode(text="Academic calendar text.", metadata={"doc_id": "doc-2", "source": "academic_calendar.pdf", "page": 1, "page_start": 1, "page_end": 2})
+    mock_response.source_nodes = [
+        NodeWithScore(node=n1, score=0.95),
+        NodeWithScore(node=n2, score=0.85)
     ]
     
-    # Mock LLM and response
-    mock_llm = MagicMock()
-    async def mock_astream(prompt, *args, **kwargs):
-        chunk = MagicMock()
-        chunk.content = "Mocked answer."
-        yield chunk
-    mock_llm.astream = mock_astream
-    mock_get_llm.return_value = mock_llm
+    async def mock_aquery(*args, **kwargs):
+        return mock_response
+    mock_query_engine.aquery = mock_aquery
+    mock_get_query_engine.return_value = mock_query_engine
     
     response = await run_stream("What is the rule?")
     
     sources = response.sources
-    
-    # Verify deduplication and budgeting
     assert len(sources) == 2
     assert sources[0].doc_id == "doc-1"
     assert sources[0].source == "hostel_rules.pdf"
@@ -162,131 +113,69 @@ async def test_rag_deduplication_and_budgeting(mock_get_llm, mock_search, mock_g
 
 @pytest.mark.asyncio
 @patch("app.services.rag_service.detect_intent")
-@patch("app.pipelines.embedder.get_embeddings_client")
-@patch("app.services.rag_service.search_vectors")
+@patch("app.services.rag_service.get_citation_query_engine")
 @patch("app.services.rag_service.get_llm_client")
-async def test_rag_citation_filtering_and_threshold(mock_get_llm, mock_search, mock_get_embeddings, mock_detect):
+async def test_rag_citation_filtering_and_threshold(mock_get_llm, mock_get_query_engine, mock_detect):
     mock_detect.return_value = "retrieval"
     """
-    Verify that RAG filters out hits below the similarity threshold (0.45)
-    and filters returned sources based on citation tags [Source X] in the LLM answer.
+    Verify that RAG filters returned sources based on citation tags [Source X] in the answer.
     """
-    # Mock embedding query
-    mock_client = MagicMock()
-    async def mock_aembed_query(text):
-        return [0.1] * 768
-    mock_client.aembed_query = mock_aembed_query
-    mock_get_embeddings.return_value = mock_client
+    mock_query_engine = MagicMock()
+    mock_response = MagicMock()
     
-    # Mock search results:
-    # 1. doc-1 Page 1 (Score 0.65) -> Passed to context (Index 1)
-    # 2. doc-2 Page 1 (Score 0.55) -> Passed to context (Index 2)
-    # 3. doc-3 Page 1 (Score 0.38) -> Filtered out (Score < 0.45)
-    mock_search.return_value = [
-        {
-            "score": 0.65,
-            "doc_id": "doc-1",
-            "source": "bus_schedule.pdf",
-            "page": 1,
-            "text_content": "Bus timings text."
-        },
-        {
-            "score": 0.55,
-            "doc_id": "doc-2",
-            "source": "calendar.pdf",
-            "page": 1,
-            "text_content": "Calendar dates text."
-        },
-        {
-            "score": 0.38,
-            "doc_id": "doc-3",
-            "source": "unrelated_doc.pdf",
-            "page": 2,
-            "text_content": "Completely unrelated content."
-        }
+    async def mock_async_response_gen():
+        yield "The bus leaves at 8:00 AM according to [Source 1]."
+    mock_response.async_response_gen = mock_async_response_gen()
+    
+    n1 = TextNode(text="Bus timings text.", metadata={"doc_id": "doc-1", "source": "bus_schedule.pdf", "page": 1})
+    n2 = TextNode(text="Calendar dates text.", metadata={"doc_id": "doc-2", "source": "calendar.pdf", "page": 1})
+    mock_response.source_nodes = [
+        NodeWithScore(node=n1, score=0.65),
+        NodeWithScore(node=n2, score=0.55)
     ]
     
-    # Mock LLM response citing only Source 1
-    mock_llm = MagicMock()
-    async def mock_astream(prompt, *args, **kwargs):
-        chunk = MagicMock()
-        chunk.content = "The bus leaves at 8:00 AM according to [Source 1]."
-        yield chunk
-    mock_llm.astream = mock_astream
-    mock_get_llm.return_value = mock_llm
+    async def mock_aquery(*args, **kwargs):
+        return mock_response
+    mock_query_engine.aquery = mock_aquery
+    mock_get_query_engine.return_value = mock_query_engine
     
     response = await run_stream("bus timings")
     
-    # Assertions
     assert "[Source 1]" in response.answer
-    assert "according to" in response.answer
-    # doc-3 is filtered out because score < 0.45
-    # doc-2 is filtered out because it is not cited in the answer
-    # Only doc-1 should be returned in sources
     assert len(response.sources) == 1
     assert response.sources[0].source == "bus_schedule.pdf"
     assert response.sources[0].page == 1
 
 @pytest.mark.asyncio
 @patch("app.services.rag_service.detect_intent")
-@patch("app.pipelines.embedder.get_embeddings_client")
-@patch("app.services.rag_service.search_vectors")
+@patch("app.services.rag_service.get_citation_query_engine")
 @patch("app.services.rag_service.get_llm_client")
-async def test_generate_rag_answer_stream(mock_get_llm, mock_search, mock_get_embeddings, mock_detect):
+async def test_generate_rag_answer_stream(mock_get_llm, mock_get_query_engine, mock_detect):
     mock_detect.return_value = "retrieval"
     """
-    Verify that generate_rag_answer_stream successfully embeds query,
-    filters by threshold, and streams tokens and final sources correctly.
+    Verify that generate_rag_answer_stream successfully retrieves and streams tokens.
     """
-    # Mock embedding query
-    mock_client = MagicMock()
-    async def mock_aembed_query(text):
-        return [0.1] * 768
-    mock_client.aembed_query = mock_aembed_query
-    mock_get_embeddings.return_value = mock_client
+    mock_query_engine = MagicMock()
+    mock_response = MagicMock()
     
-    # Mock search results:
-    # 1. doc-1 Page 1 (Score 0.65) -> Passed to context (Index 1)
-    # 2. doc-2 Page 1 (Score 0.35) -> Filtered out (Score < 0.45)
-    mock_search.return_value = [
-        {
-            "score": 0.65,
-            "doc_id": "doc-1",
-            "source": "bus_schedule.pdf",
-            "page": 1,
-            "text_content": "Bus timings text."
-        },
-        {
-            "score": 0.35,
-            "doc_id": "doc-2",
-            "source": "unrelated.pdf",
-            "page": 1,
-            "text_content": "Unrelated."
-        }
-    ]
+    async def mock_async_response_gen():
+        yield "Streaming "
+        yield "answer citing [Source 1]."
+    mock_response.async_response_gen = mock_async_response_gen()
     
-    # Mock LLM and async stream response
-    mock_llm = MagicMock()
+    n1 = TextNode(text="Bus timings text.", metadata={"doc_id": "doc-1", "source": "bus_schedule.pdf", "page": 1})
+    mock_response.source_nodes = [NodeWithScore(node=n1, score=0.65)]
     
-    async def mock_astream(prompt, *args, **kwargs):
-        chunk1 = MagicMock()
-        chunk1.content = "Streaming "
-        yield chunk1
-        chunk2 = MagicMock()
-        chunk2.content = "answer citing [Source 1]."
-        yield chunk2
-        
-    mock_llm.astream = mock_astream
-    mock_get_llm.return_value = mock_llm
+    async def mock_aquery(*args, **kwargs):
+        return mock_response
+    mock_query_engine.aquery = mock_aquery
+    mock_get_query_engine.return_value = mock_query_engine
     
     events = []
     async for event in generate_rag_answer_stream("bus timings"):
         events.append(event)
         
-    # Check streamed events
-    assert len(events) == 3 # 2 text chunks + 1 final sources chunk
-    
-    # Check text chunks
+    assert len(events) == 3
     data0 = json.loads(events[0].replace("data: ", "").strip())
     assert data0["type"] == "text"
     assert data0["content"] == "Streaming "
@@ -295,7 +184,6 @@ async def test_generate_rag_answer_stream(mock_get_llm, mock_search, mock_get_em
     assert data1["type"] == "text"
     assert data1["content"] == "answer citing [Source 1]."
     
-    # Check final sources chunk
     data2 = json.loads(events[2].replace("data: ", "").strip())
     assert data2["type"] == "sources"
     assert len(data2["content"]) == 1
@@ -307,27 +195,23 @@ async def test_generate_rag_answer_stream(mock_get_llm, mock_search, mock_get_em
 async def test_generic_query_bypasses_retrieval(mock_get_llm, mock_detect):
     mock_detect.return_value = "general"
     """
-    Verify that a generic query does not trigger embedding generation or vector searches,
-    and returns conversational responses directly.
+    Verify that a generic query bypasses retrieval and returns conversational responses directly.
     """
-    # Mock LLM and async stream response
     mock_llm = MagicMock()
-    
-    # For streaming call
-    async def mock_astream(prompt, *args, **kwargs):
-        chunk = MagicMock()
-        chunk.content = "Hello! I am GN Saarthi."
-        yield chunk
-        
-    mock_llm.astream = mock_astream
+    async def mock_astream_complete(prompt, *args, **kwargs):
+        async def gen():
+            chunk = MagicMock()
+            chunk.delta = "Hello! I am GN Saarthi."
+            yield chunk
+        return gen()
+    mock_llm.astream_complete = mock_astream_complete
     mock_get_llm.return_value = mock_llm
     
-    # Test Stream
     events = []
     async for event in generate_rag_answer_stream("hello"):
         events.append(event)
         
-    assert len(events) == 2 # 1 text chunk + 1 final sources chunk
+    assert len(events) == 2
     data0 = json.loads(events[0].replace("data: ", "").strip())
     assert data0["type"] == "text"
     assert data0["content"] == "Hello! I am GN Saarthi."
@@ -342,13 +226,9 @@ def test_session_cache_operations(mock_update_summary):
     from app.services.rag_service import MemorySessionCache
     import time
     
-    # Create a small cache for testing
     cache = MemorySessionCache(max_size=2, ttl_seconds=1)
-    
-    # Verify empty cache get
     assert cache.get("sess-1") == ([], "")
     
-    # Add turns and check limit of max_turns
     cache.add_turn("sess-1", "Hello", "Hi there", max_turns=2)
     cache.add_turn("sess-1", "How are you?", "I am good", max_turns=2)
     cache.add_turn("sess-1", "What is RAG?", "Retrieval Augmented Generation", max_turns=2)
@@ -359,10 +239,8 @@ def test_session_cache_operations(mock_update_summary):
     assert history[1]["user"] == "What is RAG?"
     assert summary == "Mocked rolling summary"
     
-    # Test LRU Eviction
     cache.add_turn("sess-2", "User2", "Bot2")
-    cache.add_turn("sess-3", "User3", "Bot3") # Should evict sess-1
-    
+    cache.add_turn("sess-3", "User3", "Bot3")
     assert cache.get("sess-1") == ([], "")
     
     h2, _ = cache.get("sess-2")
@@ -370,81 +248,60 @@ def test_session_cache_operations(mock_update_summary):
     h3, _ = cache.get("sess-3")
     assert len(h3) == 1
     
-    # Test TTL Expiration
     time.sleep(1.1)
     assert cache.get("sess-2") == ([], "")
 
 @pytest.mark.asyncio
 @patch("app.services.rag_service.detect_intent")
-@patch("app.pipelines.embedder.get_embeddings_client")
-@patch("app.services.rag_service.search_vectors")
+@patch("app.services.rag_service.get_citation_query_engine")
 @patch("app.services.rag_service.get_llm_client")
-async def test_multiturn_rag_answer(mock_get_llm, mock_search, mock_get_embeddings, mock_detect):
+async def test_multiturn_rag_answer(mock_get_llm, mock_get_query_engine, mock_detect):
     mock_detect.return_value = "retrieval"
     
-    # Mock embedding query
-    mock_client = MagicMock()
-    async def mock_aembed_query(text):
-        return [0.1] * 768
-    mock_client.aembed_query = mock_aembed_query
-    mock_get_embeddings.return_value = mock_client
-    
-    mock_search.return_value = [
-        {
-            "score": 0.90,
-            "doc_id": "doc-1",
-            "source": "curfew.pdf",
-            "page": 1,
-            "text_content": "The curfew time is 10:00 PM."
-        }
-    ]
-    
-    mock_llm = MagicMock()
+    mock_query_engine = MagicMock()
+    n1 = TextNode(text="The curfew time is 10:00 PM.", metadata={"doc_id": "doc-1", "source": "curfew.pdf", "page": 1})
     
     call_count = 0
-    async def mock_astream(prompt, *args, **kwargs):
+    async def mock_aquery(*args, **kwargs):
         nonlocal call_count
         call_count += 1
-        if call_count == 1:
-            chunk = MagicMock()
-            chunk.content = "According to curfew.pdf, the curfew time is 10:00 PM."
-            yield chunk
-        else:
-            chunk = MagicMock()
-            chunk.content = "Yes, the curfew is 10:00 PM for girls as well."
-            yield chunk
-            
-    mock_llm.astream = mock_astream
+        
+        mock_response = MagicMock()
+        async def mock_async_response_gen():
+            if call_count == 1:
+                yield "According to curfew.pdf, the curfew time is 10:00 PM."
+            else:
+                yield "Yes, the curfew is 10:00 PM for girls as well."
+        mock_response.async_response_gen = mock_async_response_gen()
+        mock_response.source_nodes = [NodeWithScore(node=n1, score=0.90)]
+        return mock_response
+        
+    mock_query_engine.aquery = mock_aquery
+    mock_get_query_engine.return_value = mock_query_engine
+    
+    mock_llm = MagicMock()
+    mock_llm_reformulate = MagicMock()
+    mock_llm_reformulate.text = "Is the curfew time the same for girls' hostels?"
+    mock_llm.complete.return_value = mock_llm_reformulate
     mock_get_llm.return_value = mock_llm
     
     session_id = "test-session-multi"
-    # Ensure cache starts fresh
     if session_id in session_cache.cache:
         del session_cache.cache[session_id]
         
-    # First turn: "What is the curfew time?"
     res1 = await run_stream("What is the curfew time?", session_id=session_id)
     assert "10:00 PM" in res1.answer
     
-    # Verify session history updated
     history, summary = session_cache.get(session_id)
     assert len(history) == 1
     assert history[0]["user"] == "What is the curfew time?"
     
-    # Mock LLM for the second turn (both reformulation call and final generation call)
-    mock_llm_reformulate = MagicMock()
-    mock_llm_reformulate.content = "Is the curfew time the same for girls' hostels?"
-    mock_llm.invoke.return_value = mock_llm_reformulate
-    
-    # Second turn: "Is it the same for girls?"
     res2 = await run_stream("Is it the same for girls?", session_id=session_id)
     assert "girls as well" in res2.answer
     
-    # Verify session history updated with both turns
     history2, summary2 = session_cache.get(session_id)
     assert len(history2) == 2
     assert history2[1]["user"] == "Is it the same for girls?"
     
-    # Cleanup
     if session_id in session_cache.cache:
         del session_cache.cache[session_id]

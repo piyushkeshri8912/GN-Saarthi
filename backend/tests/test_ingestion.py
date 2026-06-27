@@ -1,5 +1,4 @@
 from app.config import settings
-from app.pipelines.chunker import split_text_by_page
 
 def test_settings_loaded():
     """
@@ -11,48 +10,43 @@ def test_settings_loaded():
 
 def test_split_text_by_page():
     """
-    Verify text chunking splits text while preserving page number metadata.
+    Verify text chunking splits text using LlamaIndex SentenceSplitter.
     """
-    pages_data = [
-        {"page_num": 1, "text": "This is a short notice on page one."},
-        {"page_num": 2, "text": "This is a longer notice on page two. " * 250}
-    ]
+    from llama_index.core.node_parser import SentenceSplitter
+    from llama_index.core import Document
     
-    chunks = split_text_by_page(pages_data)
+    splitter = SentenceSplitter(chunk_size=512, chunk_overlap=64)
+    doc = Document(text="This is page one text. " * 300)
+    nodes = splitter.get_nodes_from_documents([doc])
     
     # Assertions
-    assert len(chunks) >= 2
-    assert chunks[0]["page"] == 1
-    assert "page one" in chunks[0]["text"]
-    assert chunks[-1]["page"] == 2
-    assert "page two" in chunks[-1]["text"]
+    assert len(nodes) >= 2
+    assert "This is page one text" in nodes[0].text
 
 from unittest.mock import MagicMock, patch
 from app.services.ingestion_service import ingest_document, delete_document
 
 @patch("app.services.ingestion_service.upload_to_gcs")
 @patch("app.services.ingestion_service.extract_text_from_image")
-@patch("app.services.ingestion_service.chunk_document_pages")
-@patch("app.services.ingestion_service.generate_embeddings")
-@patch("app.services.ingestion_service.upsert_chunks")
+@patch("app.services.rag_service.get_llama_index")
 @patch("app.services.ingestion_service.db")
-def test_ingest_image(mock_db, mock_upsert, mock_embed, mock_chunk, mock_extract, mock_upload):
+def test_ingest_image(mock_db, mock_get_index, mock_extract, mock_upload):
     """
     Verify that ingest_document routes image files correctly to extract_text_from_image,
-    calls chunker, embedder, and vector store, and saves metadata to Firestore.
+    calls LlamaIndex index.insert, and saves metadata to Firestore.
     """
     mock_upload.return_value = "gs://test-bucket/documents/uuid_test_image.png"
     mock_extract.return_value = [(1, "Extracted text from image")]
-    mock_chunk.return_value = [{"text": "Extracted text from image", "page": 1, "page_start": 1, "page_end": 1}]
-    mock_embed.return_value = [[0.1] * 768]
+    
+    mock_index = MagicMock()
+    mock_get_index.return_value = mock_index
     
     doc_id = ingest_document("test_image.png", b"fake_png_bytes")
     
     assert doc_id is not None
     mock_upload.assert_called_once_with("test_image.png", b"fake_png_bytes")
     mock_extract.assert_called_once_with(b"fake_png_bytes", "test_image.png")
-    mock_chunk.assert_called_once_with([(1, "Extracted text from image")], doc_id=doc_id)
-    mock_upsert.assert_called_once()
+    mock_index.insert.assert_called_once()
     mock_db.collection.assert_called_once_with("documents")
 
 @patch("app.services.ingestion_service.db")
@@ -92,7 +86,7 @@ def test_delete_document_idempotent(mock_delete_qdrant, mock_delete_gcs, mock_db
 
 import pytest
 from app.services.ocr_service import BaseOCRProvider, OCRService
-from app.pipelines.vector_store import upsert_chunks, verify_startup_vector_store
+from app.pipelines.vector_store import verify_startup_vector_store
 
 class DummyOCRProvider(BaseOCRProvider):
     def get_provider_name(self) -> str:
@@ -118,52 +112,10 @@ def test_ocr_service_provider_abstraction():
         service.perform_ocr(b"fail", "test_fail.jpg", "image/jpeg")
     assert "OCR processing failed using provider DummyProvider" in str(exc_info.value)
 
-@patch("app.pipelines.embedder.get_embedding_dimension")
-@patch("app.pipelines.vector_store.ensure_collection")
-@patch("app.pipelines.vector_store.get_qdrant_client")
-def test_upsert_chunks_strict_validation(mock_client, mock_ensure, mock_dim):
+@patch("app.pipelines.vector_store.get_qdrant_vector_store")
+def test_verify_startup_vector_store(mock_get_store):
     """
-    Verify that upsert_chunks raises ValueError under strict validation for:
-      - count mismatch between chunks and embeddings
-      - empty chunks or empty embeddings
-      - dimension mismatches in embeddings
+    Verify that verify_startup_vector_store successfully triggers vector store initialization.
     """
-    mock_dim.return_value = 768
-    
-    # 1. Count mismatch
-    chunks = [{"text": "Hello", "page": 1, "page_start": 1, "page_end": 1}]
-    embeddings = []
-    with pytest.raises(ValueError) as exc:
-        upsert_chunks("doc-1", "doc.pdf", chunks, embeddings)
-    assert "cannot be empty" in str(exc.value)
-
-    embeddings = [[0.1]*768, [0.2]*768]
-    with pytest.raises(ValueError) as exc:
-        upsert_chunks("doc-1", "doc.pdf", chunks, embeddings)
-    assert "Mismatched chunk and embedding counts" in str(exc.value)
-
-    # 2. Empty inputs
-    with pytest.raises(ValueError) as exc:
-        upsert_chunks("doc-1", "doc.pdf", [], [])
-    assert "cannot be empty" in str(exc.value)
-
-    # 3. Dimension mismatch
-    chunks = [{"text": "Hello", "page": 1, "page_start": 1, "page_end": 1}]
-    embeddings = [[0.1] * 512] # expected 768, got 512
-    with pytest.raises(ValueError) as exc:
-        upsert_chunks("doc-1", "doc.pdf", chunks, embeddings)
-    assert "Embedding dimension mismatch" in str(exc.value)
-
-@patch("app.pipelines.vector_store.ensure_collection")
-@patch("app.pipelines.embedder.get_embeddings_client")
-def test_verify_startup_vector_store(mock_embed_client, mock_ensure):
-    """
-    Verify that verify_startup_vector_store successfully invokes embedding client
-    to get dimension and validates collection creation.
-    """
-    mock_client = MagicMock()
-    mock_client.embed_query.return_value = [0.1] * 1536
-    mock_embed_client.return_value = mock_client
-    
     verify_startup_vector_store()
-    mock_ensure.assert_called_once_with(1536)
+    mock_get_store.assert_called_once()

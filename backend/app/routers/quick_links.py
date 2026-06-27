@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 from app.dependencies import require_admin, verify_token, db
 from app.schemas.schemas import User, QuickLinkCreate, QuickLinkResponse
@@ -31,7 +31,7 @@ async def list_quick_links(current_user: User = Depends(verify_token)):
                     try:
                         created_at_dt = datetime.fromisoformat(str(created_at))
                     except:
-                        created_at_dt = datetime.utcnow()
+                        created_at_dt = datetime.now(timezone.utc)
             else:
                 created_at_dt = created_at
                     
@@ -61,7 +61,7 @@ async def create_quick_link(
     try:
         logger.info(f"Admin {current_user.email} is creating quick link: {payload.service}")
         link_id = str(uuid.uuid4())
-        created_at = datetime.utcnow()
+        created_at = datetime.now(timezone.utc)
         
         doc_data = {
             "service": payload.service.strip(),
@@ -114,7 +114,7 @@ async def update_quick_link(
             )
             
         existing_data = doc.to_dict()
-        created_at = existing_data.get("created_at", datetime.utcnow())
+        created_at = existing_data.get("created_at", datetime.now(timezone.utc))
         
         doc_data = {
             "service": payload.service.strip(),

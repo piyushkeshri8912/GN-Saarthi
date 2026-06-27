@@ -1,64 +1,39 @@
-from langchain_google_vertexai import VertexAIEmbeddings
-from google.oauth2 import service_account
-import vertexai
+from llama_index.embeddings.google_genai import GoogleGenAIEmbedding
 from app.config import settings
 from typing import List
+import os
+
+# Set Vertex AI env configurations required by google-genai SDK
+os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "true"
+os.environ["GOOGLE_CLOUD_PROJECT"] = settings.GCP_PROJECT_ID
+os.environ["GOOGLE_CLOUD_LOCATION"] = settings.VERTEX_AI_LOCATION
 
 _embeddings_client = None
 
-def get_embeddings_client():
+def get_embeddings_client() -> GoogleGenAIEmbedding:
     """
-    Returns a singleton instance of the VertexAIEmbeddings client.
-    Initializes Vertex AI SDK with the appropriate credentials and project configuration.
+    Returns a singleton instance of the GoogleGenAIEmbedding client.
     """
     global _embeddings_client
     if _embeddings_client is None:
-        sa_info = settings.firebase_service_account_dict
-        gcp_cred = service_account.Credentials.from_service_account_info(
-            sa_info,
-            scopes=["https://www.googleapis.com/auth/cloud-platform"]
-        )
-        
-        # Initialize global vertexai settings
-        vertexai.init(
-            project=settings.GCP_PROJECT_ID,
-            location=settings.VERTEX_AI_LOCATION,
-            credentials=gcp_cred
-        )
-        
-        _embeddings_client = VertexAIEmbeddings(
-            model_name="text-embedding-004",
-            project=settings.GCP_PROJECT_ID,
-            location=settings.VERTEX_AI_LOCATION,
-            credentials=gcp_cred
-        )
+        _embeddings_client = GoogleGenAIEmbedding(model_name="text-embedding-004")
     return _embeddings_client
 
 def generate_embeddings(texts: List[str]) -> List[List[float]]:
     """
-    Generates embeddings for a list of texts using Vertex AI text-embedding-004.
-    Processes the inputs in batches of 50 to respect API limit guidelines.
+    Generates embeddings for a list of texts using GoogleGenAIEmbedding.
     """
     if not texts:
         return []
-        
     client = get_embeddings_client()
-    
-    embeddings = []
-    batch_size = 50
-    for i in range(0, len(texts), batch_size):
-        batch_texts = texts[i : i + batch_size]
-        batch_embeddings = client.embed_documents(batch_texts)
-        embeddings.extend(batch_embeddings)
-        
-    return embeddings
+    return client.get_text_embedding_batch(texts)
 
 def generate_query_embedding(text: str) -> List[float]:
     """
     Generates the embedding representation for a single search query.
     """
     client = get_embeddings_client()
-    return client.embed_query(text)
+    return client.get_query_embedding(text)
 
 _embedding_dimension = None
 
@@ -71,7 +46,10 @@ def get_embedding_dimension() -> int:
     if _embedding_dimension is None:
         try:
             client = get_embeddings_client()
-            _embedding_dimension = len(client.embed_query("t"))
+            if hasattr(client, "embed_query"):
+                _embedding_dimension = len(client.embed_query("t"))
+            else:
+                _embedding_dimension = len(client.get_query_embedding("t"))
         except Exception:
             return 768
     return _embedding_dimension

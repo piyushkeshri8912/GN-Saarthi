@@ -1,15 +1,13 @@
 import uuid
 import logging
 import mimetypes
-from datetime import datetime
+from datetime import datetime, timezone
 from google.cloud import storage
 from google.oauth2 import service_account
 from app.config import settings
 from app.dependencies import db
 from app.pipelines.pdf_parser import extract_text_from_pdf, extract_text_from_image
-from app.pipelines.chunker import chunk_document_pages
-from app.pipelines.embedder import generate_embeddings
-from app.pipelines.vector_store import upsert_chunks, delete_by_doc_id
+from app.pipelines.vector_store import delete_by_doc_id
 
 logger = logging.getLogger(__name__)
 
@@ -84,10 +82,8 @@ def ingest_document(filename: str, file_bytes: bytes) -> str:
     Runs the full ingestion pipeline:
       1. Upload to GCS
       2. Parse PDF or image to extract text per page
-      3. Chunk text into token-based pages
-      4. Embed text chunks using Vertex AI
-      5. Upsert embeddings & metadata payloads to Qdrant
-      6. Save document metadata to Firestore
+      3. Insert documents natively using LlamaIndex VectorStoreIndex
+      4. Save document metadata to Firestore
       
     Returns the generated doc_id.
     """
@@ -110,35 +106,44 @@ def ingest_document(filename: str, file_bytes: bytes) -> str:
         else:
             pages_data = extract_text_from_image(file_bytes, filename)
         
-        # Step 3: Chunk text
-        logger.info(f"[{doc_id}] Chunking document text...")
-        chunks = chunk_document_pages(pages_data, doc_id=doc_id)
+        # Step 3: Insert documents natively using LlamaIndex
+        logger.info(f"[{doc_id}] Indexing pages using LlamaIndex VectorStoreIndex...")
+        from llama_index.core import Document
+        from app.services.rag_service import get_llama_index
         
-        if not chunks:
-            raise ValueError(f"No text could be extracted or chunked from the uploaded file: {filename}")
+        documents = []
+        for page_num, text in pages_data:
+            text = text.strip()
+            if not text:
+                continue
+            documents.append(Document(
+                text=text,
+                metadata={
+                    "doc_id": doc_id,
+                    "document_id": doc_id,
+                    "source": filename,
+                    "source_type": "pdf" if ext == ".pdf" else "image",
+                    "page": page_num,
+                    "page_start": page_num,
+                    "page_end": page_num,
+                }
+            ))
             
-        # Step 4: Embed chunks
-        logger.info(f"[{doc_id}] Generating embeddings for {len(chunks)} chunks...")
-        chunk_texts = [c["text"] for c in chunks]
-        embeddings = generate_embeddings(chunk_texts)
+        if not documents:
+            raise ValueError(f"No text could be extracted from the uploaded file: {filename}")
+            
+        index = get_llama_index()
+        for doc in documents:
+            index.insert(doc)
         
-        # Step 5: Upsert to Qdrant
-        logger.info(f"[{doc_id}] Upserting to Qdrant...")
-        upsert_chunks(
-            doc_id=doc_id,
-            source=filename,
-            chunks=chunks,
-            embeddings=embeddings
-        )
-        
-        # Step 6: Save metadata to Firestore
+        # Step 4: Save metadata to Firestore
         logger.info(f"[{doc_id}] Writing metadata to Firestore...")
         doc_meta = {
             "doc_id": doc_id,
             "filename": filename,
             "gcs_uri": gcs_uri,
             "size_bytes": len(file_bytes),
-            "uploaded_at": datetime.utcnow()
+            "uploaded_at": datetime.now(timezone.utc)
         }
         db.collection("documents").document(doc_id).set(doc_meta)
         
