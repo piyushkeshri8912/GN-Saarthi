@@ -46,10 +46,7 @@ def get_embedding_dimension() -> int:
     if _embedding_dimension is None:
         try:
             client = get_embeddings_client()
-            if hasattr(client, "embed_query"):
-                _embedding_dimension = len(client.embed_query("t"))
-            else:
-                _embedding_dimension = len(client.get_query_embedding("t"))
+            _embedding_dimension = len(client.get_query_embedding("t"))
         except Exception:
             return 768
     return _embedding_dimension

@@ -75,8 +75,8 @@ async def create_quick_link(
         
         # Invalidate the memory cache in RAG service when links are modified
         try:
-            from app.services.rag_service import invalidate_links_cache
-            invalidate_links_cache()
+            from app.services.query_service import invalidate_links_cache
+            await invalidate_links_cache()
         except Exception as cache_err:
             logger.warning(f"Failed to invalidate quick links cache: {cache_err}")
             
@@ -128,8 +128,8 @@ async def update_quick_link(
         
         # Invalidate cache
         try:
-            from app.services.rag_service import invalidate_links_cache
-            invalidate_links_cache()
+            from app.services.query_service import invalidate_links_cache
+            await invalidate_links_cache()
         except Exception as cache_err:
             logger.warning(f"Failed to invalidate quick links cache: {cache_err}")
             
@@ -170,8 +170,8 @@ async def delete_quick_link(
         
         # Invalidate cache
         try:
-            from app.services.rag_service import invalidate_links_cache
-            invalidate_links_cache()
+            from app.services.query_service import invalidate_links_cache
+            await invalidate_links_cache()
         except Exception as cache_err:
             logger.warning(f"Failed to invalidate quick links cache: {cache_err}")
             

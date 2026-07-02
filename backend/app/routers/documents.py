@@ -4,7 +4,6 @@ from typing import List
 import logging
 from app.dependencies import require_admin, verify_token, db
 from app.schemas.schemas import User, UploadResponse, DocumentMeta
-from app.services.ingestion_service import ingest_document, delete_document
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +29,8 @@ async def upload_document(
     try:
         logger.info(f"Admin {current_user.email} is uploading document: {file.filename}")
         file_bytes = await file.read()
-        doc_id = ingest_document(file.filename, file_bytes)
+        from app.services.ingestion_service import ingest_document_async
+        doc_id = await ingest_document_async(file.filename, file_bytes)
         return UploadResponse(
             success=True,
             doc_id=doc_id,
@@ -84,7 +84,8 @@ async def remove_document(doc_id: str, current_user: User = Depends(require_admi
     """
     try:
         logger.info(f"Admin {current_user.email} requested deletion of document: {doc_id}")
-        delete_document(doc_id)
+        from app.services.ingestion_service import delete_document_async
+        await delete_document_async(doc_id)
         return {"message": "Document successfully deleted", "doc_id": doc_id}
     except Exception as e:
         logger.error(f"Failed to delete document {doc_id}: {e}")

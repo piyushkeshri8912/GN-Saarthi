@@ -10,12 +10,44 @@ class Settings(BaseSettings):
     QDRANT_URL: str
     QDRANT_API_KEY: str
     QDRANT_COLLECTION_NAME: str = "college_docs"
-    FIREBASE_SERVICE_ACCOUNT_JSON: str
+    FIREBASE_SERVICE_ACCOUNT_JSON: Optional[str] = None
     VERTEX_AI_LOCATION: str = "us-central1"
     ALLOWED_DOMAIN: str = "iitgn.ac.in"
     TEMP_TEST_EMAIL: Optional[str] = ""
     FIRESTORE_DATABASE_ID: str = "(default)"
     ALLOWED_CORS_ORIGINS: Optional[str] = ""
+
+    # Retrieval tuning
+    RETRIEVAL_TOP_K: int = 40
+    RERANK_TOP_N: int = 15
+    RELEVANCE_THRESHOLD: float = 0.50
+
+    # Hybrid search (BM42 dense + sparse fusion)
+    HYBRID_SEARCH_ENABLED: bool = True
+    HYBRID_DENSE_TOP_K: int = 40
+    HYBRID_SPARSE_TOP_K: int = 75
+    HYBRID_FUSION_TOP_K: int = 15
+    HYBRID_RRF_K: int = 60
+
+    # Redis
+    REDIS_URL: str = ""
+
+    @property
+    def secure_redis_url(self) -> str:
+        if not self.REDIS_URL:
+            return ""
+        if self.REDIS_URL.startswith("redis://"):
+            return "rediss://" + self.REDIS_URL[8:]
+        return self.REDIS_URL
+
+    # Session settings
+    SESSION_MAX_TURNS: int = 3
+    SESSION_TOKEN_LIMIT: int = 3000
+    SESSION_TTL_SECONDS: int = 86400
+
+    # LLM
+    LLM_MODEL: str = "gemini-2.5-flash"
+    LLM_TEMPERATURE: float = 0.2
 
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"),
@@ -25,7 +57,9 @@ class Settings(BaseSettings):
 
 
     @property
-    def firebase_service_account_dict(self) -> Dict[str, Any]:
+    def firebase_service_account_dict(self) -> Optional[Dict[str, Any]]:
+        if not self.FIREBASE_SERVICE_ACCOUNT_JSON:
+            return None
         try:
             # Strip quotes if they exist around the JSON string
             json_str = self.FIREBASE_SERVICE_ACCOUNT_JSON.strip()
@@ -42,12 +76,13 @@ settings = Settings()
 if not os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
     try:
         sa_dict = settings.firebase_service_account_dict
-        import tempfile
-        # Create a temp file that survives program runtime
-        temp_file = tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".json")
-        json.dump(sa_dict, temp_file)
-        temp_file.close()
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file.name
+        if sa_dict:
+            import tempfile
+            # Create a temp file that survives program runtime
+            temp_file = tempfile.NamedTemporaryFile(delete=False, mode="w", suffix=".json")
+            json.dump(sa_dict, temp_file)
+            temp_file.close()
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file.name
     except Exception as e:
         import sys
         print(f"Warning: Failed to dynamically configure GOOGLE_APPLICATION_CREDENTIALS: {e}", file=sys.stderr)

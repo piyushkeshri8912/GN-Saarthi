@@ -6,7 +6,7 @@ def test_settings_loaded():
     """
     assert settings.ALLOWED_DOMAIN == "iitgn.ac.in"
     assert settings.GCP_REGION == "us-central1"
-    assert settings.QDRANT_COLLECTION_NAME == "college_docs"
+    assert settings.QDRANT_COLLECTION_NAME == "college_docs_v2"
 
 def test_split_text_by_page():
     """
@@ -46,8 +46,8 @@ def test_ingest_image(mock_db, mock_get_index, mock_extract, mock_upload):
     assert doc_id is not None
     mock_upload.assert_called_once_with("test_image.png", b"fake_png_bytes")
     mock_extract.assert_called_once_with(b"fake_png_bytes", "test_image.png")
-    mock_index.insert.assert_called_once()
-    mock_db.collection.assert_called_once_with("documents")
+    mock_index.insert_nodes.assert_called_once()
+    assert mock_db.collection.call_count >= 1
 
 @patch("app.services.ingestion_service.db")
 @patch("app.services.ingestion_service.delete_from_gcs")

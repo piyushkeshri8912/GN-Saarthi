@@ -7,8 +7,14 @@ from app.schemas.schemas import User
 
 # Initialize Firebase Admin SDK
 if not firebase_admin._apps:
-    cred = credentials.Certificate(settings.firebase_service_account_dict)
-    firebase_admin.initialize_app(cred)
+    sa_dict = settings.firebase_service_account_dict
+    if sa_dict:
+        # Local development: initialize using service account JSON credentials
+        cred = credentials.Certificate(sa_dict)
+        firebase_admin.initialize_app(cred)
+    else:
+        # Production/GCP: initialize using Application Default Credentials (ADC)
+        firebase_admin.initialize_app()
 
 db = firestore.client(database_id=settings.FIRESTORE_DATABASE_ID)
 
@@ -45,3 +51,17 @@ async def require_admin(current_user: User = Depends(verify_token)) -> User:
             detail="Forbidden: Admin privileges required."
         )
     return current_user
+
+_query_service = None
+
+def get_query_service():
+    global _query_service
+    if _query_service is None:
+        from app.services.session_service import SessionService
+        from app.pipelines.retriever import SmartRetriever
+        from app.services.query_service import QueryService
+        
+        session_svc = SessionService()
+        retriever = SmartRetriever()
+        _query_service = QueryService(session_svc, retriever)
+    return _query_service

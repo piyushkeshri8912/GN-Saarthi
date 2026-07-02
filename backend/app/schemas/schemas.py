@@ -38,24 +38,6 @@ class DocumentMeta(BaseModel):
     size_bytes: int
     uploaded_at: datetime
 
-class NoticeResponse(BaseModel):
-    id: str
-    title: str
-    body: str
-    category: str
-    source_email: str
-    date: datetime
-    created_at: datetime
-
-class EventResponse(BaseModel):
-    id: str
-    title: str
-    description: str
-    date: datetime
-    location: str
-    category: str
-    created_at: datetime
-
 
 class QuickLinkCreate(BaseModel):
     service: str = Field(..., min_length=1, max_length=100, description="Service name")

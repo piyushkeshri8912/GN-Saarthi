@@ -1,8 +1,10 @@
 import uuid
 import logging
 import mimetypes
+import asyncio
 from datetime import datetime, timezone
 from google.cloud import storage
+from google.cloud.firestore_v1.base_query import FieldFilter
 from google.oauth2 import service_account
 from app.config import settings
 from app.dependencies import db
@@ -11,16 +13,22 @@ from app.pipelines.vector_store import delete_by_doc_id
 
 logger = logging.getLogger(__name__)
 
+# Singleton storage client
+_storage_client = None
+
 def _get_storage_client() -> storage.Client:
     """
-    Returns an authenticated Google Cloud Storage client.
+    Returns an authenticated Google Cloud Storage client (singleton).
     """
-    sa_info = settings.firebase_service_account_dict
-    gcp_cred = service_account.Credentials.from_service_account_info(
-        sa_info,
-        scopes=["https://www.googleapis.com/auth/cloud-platform"]
-    )
-    return storage.Client(credentials=gcp_cred, project=settings.GCP_PROJECT_ID)
+    global _storage_client
+    if _storage_client is None:
+        sa_info = settings.firebase_service_account_dict
+        gcp_cred = service_account.Credentials.from_service_account_info(
+            sa_info,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"]
+        )
+        _storage_client = storage.Client(credentials=gcp_cred, project=settings.GCP_PROJECT_ID)
+    return _storage_client
 
 def upload_to_gcs(filename: str, file_bytes: bytes) -> str:
     """
@@ -50,7 +58,6 @@ def upload_to_gcs(filename: str, file_bytes: bytes) -> str:
         content_type = mime_map.get(ext, "application/octet-stream")
         
     blob.upload_from_string(file_bytes, content_type=content_type)
-    
     return f"gs://{settings.GCS_BUCKET_NAME}/{blob_name}"
 
 def delete_from_gcs(gcs_uri: str):
@@ -77,15 +84,9 @@ def delete_from_gcs(gcs_uri: str):
     except Exception as e:
         logger.error(f"Failed to delete GCS blob {gcs_uri}: {e}")
 
-def ingest_document(filename: str, file_bytes: bytes) -> str:
+async def ingest_document_async(filename: str, file_bytes: bytes) -> str:
     """
-    Runs the full ingestion pipeline:
-      1. Upload to GCS
-      2. Parse PDF or image to extract text per page
-      3. Insert documents natively using LlamaIndex VectorStoreIndex
-      4. Save document metadata to Firestore
-      
-    Returns the generated doc_id.
+    Runs the full ingestion pipeline asynchronously in thread pools.
     """
     ext = "." + filename.lower().split(".")[-1]
     allowed_extensions = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".tiff", ".tif"}
@@ -96,15 +97,28 @@ def ingest_document(filename: str, file_bytes: bytes) -> str:
     gcs_uri = None
     
     try:
+        # Prevent duplicate ingestion of the exact same filename
+        try:
+            # Firestore calls are sync, wrap in asyncio.to_thread
+            existing_docs_snap = await asyncio.to_thread(
+                lambda: list(db.collection("documents").where(filter=FieldFilter("filename", "==", filename)).stream())
+            )
+            for doc in existing_docs_snap:
+                old_doc_id = doc.id
+                logger.info(f"Duplicate filename detected: '{filename}'. Automatically overwriting old document '{old_doc_id}' first.")
+                await delete_document_async(old_doc_id)
+        except Exception as e:
+            logger.warning(f"Failed to check or delete duplicate document: {e}")
+
         # Step 1: Upload to GCS
-        gcs_uri = upload_to_gcs(filename, file_bytes)
+        gcs_uri = await asyncio.to_thread(upload_to_gcs, filename, file_bytes)
         
         # Step 2: Parse PDF or image
         logger.info(f"[{doc_id}] Parsing document text for {filename}...")
         if ext == ".pdf":
-            pages_data = extract_text_from_pdf(file_bytes)
+            pages_data = await asyncio.to_thread(extract_text_from_pdf, file_bytes)
         else:
-            pages_data = extract_text_from_image(file_bytes, filename)
+            pages_data = await asyncio.to_thread(extract_text_from_image, file_bytes, filename)
         
         # Step 3: Insert documents natively using LlamaIndex
         logger.info(f"[{doc_id}] Indexing pages using LlamaIndex VectorStoreIndex...")
@@ -118,7 +132,9 @@ def ingest_document(filename: str, file_bytes: bytes) -> str:
                 continue
             documents.append(Document(
                 text=text,
+                id_=f"{doc_id}_page_{page_num}",
                 metadata={
+                    "doc_id_key": doc_id,
                     "doc_id": doc_id,
                     "document_id": doc_id,
                     "source": filename,
@@ -132,9 +148,17 @@ def ingest_document(filename: str, file_bytes: bytes) -> str:
         if not documents:
             raise ValueError(f"No text could be extracted from the uploaded file: {filename}")
             
-        index = get_llama_index()
-        for doc in documents:
-            index.insert(doc)
+        # Step 3: Insert documents natively using LlamaIndex (Batch insertion)
+        logger.info(f"[{doc_id}] Batch parsing and inserting {len(documents)} pages using LlamaIndex...")
+        
+        def _insert_sync(docs):
+            index = get_llama_index()
+            from llama_index.core import Settings
+            node_parser = Settings.node_parser
+            nodes = node_parser.get_nodes_from_documents(docs)
+            index.insert_nodes(nodes)
+
+        await asyncio.to_thread(_insert_sync, documents)
         
         # Step 4: Save metadata to Firestore
         logger.info(f"[{doc_id}] Writing metadata to Firestore...")
@@ -145,7 +169,9 @@ def ingest_document(filename: str, file_bytes: bytes) -> str:
             "size_bytes": len(file_bytes),
             "uploaded_at": datetime.now(timezone.utc)
         }
-        db.collection("documents").document(doc_id).set(doc_meta)
+        await asyncio.to_thread(
+            lambda: db.collection("documents").document(doc_id).set(doc_meta)
+        )
         
         logger.info(f"[{doc_id}] Ingestion pipeline completed successfully.")
         return doc_id
@@ -156,23 +182,19 @@ def ingest_document(filename: str, file_bytes: bytes) -> str:
         if gcs_uri:
             logger.info(f"[{doc_id}] Cleaning up GCS blob...")
             try:
-                delete_from_gcs(gcs_uri)
+                await asyncio.to_thread(delete_from_gcs, gcs_uri)
             except Exception as ge:
                 logger.error(f"[{doc_id}] Cleanup: GCS blob deletion failed: {ge}")
         # Cleanup Qdrant vectors if any were upserted
         try:
-            delete_by_doc_id(doc_id)
+            await asyncio.to_thread(delete_by_doc_id, doc_id)
         except Exception as qe:
             logger.error(f"[{doc_id}] Cleanup: Qdrant vectors deletion failed: {qe}")
         raise
 
-def delete_document(doc_id: str):
+async def delete_document_async(doc_id: str):
     """
-    Removes a document entirely:
-      1. Fetch metadata from Firestore (best-effort)
-      2. Delete blob from GCS (best-effort)
-      3. Delete vectors from Qdrant (best-effort)
-      4. Delete metadata from Firestore
+    Removes a document entirely asynchronously.
     """
     logger.info(f"Starting deletion for doc_id: {doc_id}")
     
@@ -180,7 +202,7 @@ def delete_document(doc_id: str):
     gcs_uri = None
     doc_ref = db.collection("documents").document(doc_id)
     try:
-        doc_snap = doc_ref.get()
+        doc_snap = await asyncio.to_thread(doc_ref.get)
         if doc_snap.exists:
             data = doc_snap.to_dict()
             gcs_uri = data.get("gcs_uri")
@@ -190,21 +212,30 @@ def delete_document(doc_id: str):
     # 2. Delete from GCS (best effort)
     if gcs_uri:
         try:
-            delete_from_gcs(gcs_uri)
+            await asyncio.to_thread(delete_from_gcs, gcs_uri)
         except Exception as e:
             logger.error(f"Failed to delete GCS blob {gcs_uri}: {e}")
             
     # 3. Delete from Qdrant (best effort)
     try:
-        delete_by_doc_id(doc_id)
+        await asyncio.to_thread(delete_by_doc_id, doc_id)
     except Exception as e:
         logger.error(f"Failed to delete vectors from Qdrant for doc_id '{doc_id}': {e}")
         
-    # 4. Delete from Firestore (always perform, ignore missing docs for idempotency)
+    # 4. Delete from Firestore
     try:
-        doc_ref.delete()
+        await asyncio.to_thread(doc_ref.delete)
     except Exception as e:
         logger.error(f"Failed to delete document from Firestore for doc_id '{doc_id}': {e}")
         raise ValueError(f"Failed to delete document metadata from Firestore: {e}")
         
+
+
     logger.info(f"Document {doc_id} deletion completed.")
+
+# Synchronous compatibility wrapper
+def ingest_document(filename: str, file_bytes: bytes) -> str:
+    return asyncio.run(ingest_document_async(filename, file_bytes))
+
+def delete_document(doc_id: str):
+    return asyncio.run(delete_document_async(doc_id))

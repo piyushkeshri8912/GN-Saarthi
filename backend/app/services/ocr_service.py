@@ -2,8 +2,8 @@ import time
 import logging
 from abc import ABC, abstractmethod
 from typing import List, Tuple
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part
+from google import genai
+from google.genai import types
 from google.oauth2 import service_account
 from app.config import settings
 
@@ -24,39 +24,42 @@ class BaseOCRProvider(ABC):
 
 class GeminiOCRProvider(BaseOCRProvider):
     def __init__(self):
-        self._model = None
+        self._client = None
 
     def get_provider_name(self) -> str:
         return "Gemini"
 
-    def _get_model(self) -> GenerativeModel:
-        if self._model is None:
+    def _get_client(self) -> genai.Client:
+        if self._client is None:
             try:
                 sa_info = settings.firebase_service_account_dict
                 gcp_cred = service_account.Credentials.from_service_account_info(
                     sa_info,
                     scopes=["https://www.googleapis.com/auth/cloud-platform"]
                 )
-                vertexai.init(
+                self._client = genai.Client(
+                    vertexai=True,
                     project=settings.GCP_PROJECT_ID,
                     location=settings.VERTEX_AI_LOCATION,
                     credentials=gcp_cred
                 )
-                self._model = GenerativeModel("gemini-2.5-flash")
             except Exception as e:
-                logger.error(f"Failed to initialize GenerativeModel for OCR provider: {e}")
+                logger.error(f"Failed to initialize google-genai Client for OCR provider: {e}")
                 raise
-        return self._model
+        return self._client
 
     def extract_text(self, image_bytes: bytes, mime_type: str = "image/jpeg") -> str:
-        model = self._get_model()
-        image_part = Part.from_data(data=image_bytes, mime_type=mime_type)
+        client = self._get_client()
+        image_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
         prompt = (
             "Extract all text from this image exactly. Do not add any preamble, explanation, or commentary. "
             "If the image contains tables, timetables, schedules, side-by-side columns, or structured lists, "
             "format them as clean Markdown tables or structured lists to preserve the column alignment and layout."
         )
-        response = model.generate_content([image_part, prompt])
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=[image_part, prompt]
+        )
         return response.text.strip() if response.text else ""
 
 
