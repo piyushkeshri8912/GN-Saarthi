@@ -29,26 +29,6 @@ export interface DocumentMeta {
   uploaded_at: string; // ISO string
 }
 
-export interface Notice {
-  id: string;
-  title: string;
-  body: string;
-  category: string;
-  source_email: string;
-  date: string;
-  created_at: string;
-}
-
-export interface Event {
-  id: string;
-  title: string;
-  description: string;
-  date: string;
-  location: string;
-  category: string;
-  created_at: string;
-}
-
 export interface QuickLink {
   id: string;
   service: string;

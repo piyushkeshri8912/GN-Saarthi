@@ -94,7 +94,11 @@ export default function ChatWindow({ messages, loading, onSendMessage }: ChatWin
                   ) : (
                     <div className="max-w-none text-sm break-words">
                       {message.text.trim() === "" ? (
-                        <span className="text-zinc-400 dark:text-zinc-500 animate-pulse font-medium">(....)</span>
+                        <div className="flex items-center space-x-1.5 py-1 px-0.5">
+                          <div className="w-1.5 h-1.5 bg-zinc-400 dark:bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "0ms" }}></div>
+                          <div className="w-1.5 h-1.5 bg-zinc-400 dark:bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "150ms" }}></div>
+                          <div className="w-1.5 h-1.5 bg-zinc-400 dark:bg-zinc-500 rounded-full animate-bounce" style={{ animationDelay: "300ms" }}></div>
+                        </div>
                       ) : (
                         <ReactMarkdown 
                           remarkPlugins={[remarkGfm]}

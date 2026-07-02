@@ -7,7 +7,6 @@ import { signOut } from "firebase/auth";
 import { auth } from "../../lib/firebase";
 import { MessageSquare, LayoutDashboard, Bell, Calendar, Shield, LogOut, Menu, X, Sun, Moon, FileText } from "lucide-react";
 import { useState, useEffect } from "react";
-import { useChatbotStore } from "../../store/chatbotStore";
 import Image from "next/image";
 
 export default function Navbar() {
@@ -59,10 +58,8 @@ export default function Navbar() {
     }
   };
 
-  const { isOpen, width: chatbotWidth } = useChatbotStore();
-  
-  // Collapse navigation if effective width (browser width minus chatbot) drops below 850px
-  const isMobileView = isMounted && (isOpen ? windowWidth - chatbotWidth : windowWidth) < 850;
+  // Collapse navigation if browser width drops below 850px
+  const isMobileView = isMounted && windowWidth < 850;
 
   // Auto-close mobile menu if user switches to desktop view
   useEffect(() => {

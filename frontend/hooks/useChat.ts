@@ -1,23 +1,18 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect } from "react";
 import api from "../lib/api";
 import { Message, SourceChunk } from "../types";
 import { auth } from "../lib/firebase";
+import { useChatStore } from "../store/chatStore";
 
 export const useChat = () => {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [loading, setLoading] = useState(false);
-  const sessionIdRef = useRef<string>("");
+  const { messages, setMessages, loading, setLoading, sessionId, setSessionId } = useChatStore();
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      let sid = sessionStorage.getItem("gn_saarthi_session_id");
-      if (!sid) {
-        sid = crypto.randomUUID();
-        sessionStorage.setItem("gn_saarthi_session_id", sid);
-      }
-      sessionIdRef.current = sid;
+    if (typeof window !== "undefined" && !sessionId) {
+      const sid = crypto.randomUUID();
+      setSessionId(sid);
     }
-  }, []);
+  }, [sessionId, setSessionId]);
 
   const sendMessage = async (text: string) => {
     if (!text.trim()) return;
@@ -49,7 +44,7 @@ export const useChat = () => {
         },
         body: JSON.stringify({ 
           message: text,
-          session_id: sessionIdRef.current 
+          session_id: sessionId 
         }),
       });
 
@@ -199,11 +194,8 @@ export const useChat = () => {
 
   const clearChat = () => {
     setMessages([]);
-    if (typeof window !== "undefined") {
-      const newSid = crypto.randomUUID();
-      sessionStorage.setItem("gn_saarthi_session_id", newSid);
-      sessionIdRef.current = newSid;
-    }
+    const newSid = crypto.randomUUID();
+    setSessionId(newSid);
   };
 
   return { messages, loading, sendMessage, clearChat };
