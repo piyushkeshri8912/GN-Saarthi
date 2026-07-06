@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useAuthStore } from "../../store/authStore";
 import { signOut } from "firebase/auth";
 import { auth } from "../../lib/firebase";
-import { MessageSquare, LayoutDashboard, Bell, Calendar, Shield, LogOut, Menu, X, Sun, Moon, FileText } from "lucide-react";
+import { MessageSquare, LayoutDashboard, Bell, Calendar, Shield, LogOut, Menu, X, Sun, Moon } from "lucide-react";
 import { useState, useEffect } from "react";
 import Image from "next/image";
 
@@ -72,7 +72,6 @@ export default function Navbar() {
 
   const navItems = [
     { name: "Chat", href: "/chat", icon: MessageSquare },
-    { name: "Reference Docs", href: "/reference-docs", icon: FileText },
   ];
 
   const isAdmin = user.role === "admin";

@@ -149,16 +149,7 @@ export default function ChatWindow({ messages, loading, onSendMessage }: ChatWin
           })
         )}
  
-        {/* Loading / Typing Dots */}
-        {loading && (
-          <div className="max-w-[92%] mr-auto">
-            <div className="flex items-center gap-1.5 rounded-2xl bg-zinc-100 dark:bg-zinc-900/30 border border-zinc-200 dark:border-zinc-800 px-3.5 py-2.5 text-zinc-400 w-fit">
-              <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400 [animation-delay:-0.3s]"></div>
-              <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400 [animation-delay:-0.15s]"></div>
-              <div className="h-1.5 w-1.5 animate-bounce rounded-full bg-zinc-400"></div>
-            </div>
-          </div>
-        )}
+
  
         <div ref={messagesEndRef} />
       </div>
