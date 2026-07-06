@@ -129,8 +129,8 @@ async def download_document(doc_id: str, current_user: User = Depends(verify_tok
             )
         bucket_name, blob_name = parts
         
-        from app.services.ingestion_service import _get_storage_client
-        client = _get_storage_client()
+        from app.services.ingestion_service import storage_client
+        client = storage_client
         bucket = client.bucket(bucket_name)
         blob = bucket.get_blob(blob_name)
         
