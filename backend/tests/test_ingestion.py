@@ -28,7 +28,7 @@ from app.services.ingestion_service import ingest_document, delete_document
 
 @patch("app.services.ingestion_service.upload_to_gcs")
 @patch("app.services.ingestion_service.extract_text_from_image")
-@patch("app.services.rag_service.get_llama_index")
+@patch("app.services.ingestion_service.get_llama_index")
 @patch("app.services.ingestion_service.db")
 def test_ingest_image(mock_db, mock_get_index, mock_extract, mock_upload):
     """
@@ -51,7 +51,7 @@ def test_ingest_image(mock_db, mock_get_index, mock_extract, mock_upload):
 
 @patch("app.services.ingestion_service.db")
 @patch("app.services.ingestion_service.delete_from_gcs")
-@patch("app.services.ingestion_service.delete_by_doc_id")
+@patch("app.services.ingestion_service.delete_from_qdrant")
 def test_delete_document_idempotent(mock_delete_qdrant, mock_delete_gcs, mock_db):
     """
     Verify that delete_document runs idempotently and cleans up GCS, Qdrant,

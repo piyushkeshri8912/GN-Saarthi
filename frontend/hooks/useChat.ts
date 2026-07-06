@@ -17,7 +17,6 @@ export const useChat = () => {
   const sendMessage = async (text: string) => {
     if (!text.trim()) return;
 
-    // Create and append user message
     const userMsg: Message = {
       id: crypto.randomUUID(),
       sender: "user",
@@ -25,7 +24,16 @@ export const useChat = () => {
       timestamp: new Date().toISOString(),
     };
 
-    setMessages((prev) => [...prev, userMsg]);
+    const botMsgId = crypto.randomUUID();
+    const initialBotMsg: Message = {
+      id: botMsgId,
+      sender: "bot",
+      text: "",
+      timestamp: new Date().toISOString(),
+      sources: [],
+    };
+
+    setMessages((prev) => [...prev, userMsg, initialBotMsg]);
     setLoading(true);
 
     try {
@@ -57,18 +65,7 @@ export const useChat = () => {
         throw new Error("No response body received from server");
       }
 
-      // Create and append bot message with empty text initially
-      const botMsgId = crypto.randomUUID();
-      const initialBotMsg: Message = {
-        id: botMsgId,
-        sender: "bot",
-        text: "",
-        timestamp: new Date().toISOString(),
-        sources: [],
-      };
-
-      setMessages((prev) => [...prev, initialBotMsg]);
-      setLoading(false);
+      setLoading(true);
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder("utf-8");
@@ -180,13 +177,11 @@ export const useChat = () => {
       console.error("Chat request failed:", error);
       const errorMessage = error?.message || "Sorry, I encountered an error. Please try again.";
       
-      const botMsgError: Message = {
-        id: crypto.randomUUID(),
-        sender: "bot",
-        text: errorMessage,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, botMsgError]);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === botMsgId ? { ...msg, text: errorMessage } : msg
+        )
+      );
     } finally {
       setLoading(false);
     }

@@ -14,34 +14,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-from contextlib import asynccontextmanager
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    logger.info("Running startup validation...")
-    try:
-        from app.pipelines.vector_store import verify_startup_vector_store
-        verify_startup_vector_store()
-        logger.info("Startup validation passed successfully.")
-    except Exception as e:
-        logger.error(f"Startup validation failed: {e}")
-        
-    try:
-        from app.dependencies import get_query_service
-        from app.services.query_service import get_quick_links
-        query_service = get_query_service()
-        await get_quick_links(query_service.session_service.redis)
-        logger.info("Quick links pre-cached in Redis successfully on startup.")
-    except Exception as e:
-        logger.error(f"Failed to cache quick links on startup: {e}")
-        
-    yield
-
 app = FastAPI(
-    title="IITGN College Portal Backend - GN Saarthi",
-    description="Backend services for GN Saarthi: RAG chatbot and document ingestion.",
-    version="1.0.0",
-    lifespan=lifespan
+    title="GN Saarthi - Backend API",
+    description="Backend services for GN Saarthi.",
+    version="2.0.1",
 )
 
 # CORS Configuration
