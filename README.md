@@ -4,13 +4,13 @@ GN Saarthi is a production-ready, AI-powered college assistant chatbot and admin
 
 ---
 
-## 🚀 Key Features
+## Key Features
 
 * **Agentic RAG Architecture**: Built on LlamaIndex `FunctionAgent` powered by `GoogleGenAI` (Gemini 2.5 Flash on Vertex AI), allowing the assistant to dynamically decide whether to retrieve documents, answer conversationally, or refer to fallback directories.
 * **Hybrid Vector Search (Dense + Sparse)**: Utilizes Qdrant's native Fusion Query engine performing server-side Reciprocal Rank Fusion (RRF) across Vertex AI dense embeddings (`text-embedding-004`) and Qdrant BM42 sparse representations (`bm42-all-minilm-l6-v2-attentions`).
 * **Strict Citation Filtering & Deduplication**:
   * Only displays reference cards for files that are *explicitly cited* by the model.
-  * Aggregates and deduplicates citations under a single document card by mapping to `doc_id_key` (the document's unique UUID).
+  * Aggregates and deduplicates citations under a single document card by mapping to `doc_id` (the document's unique UUID).
 * **Robust Session & Fallback Caching (Redis)**:
   * **Chat Sessions**: Message history and rolling summaries are cached in Redis with dynamic session TTL refreshes.
   * **Startup Pre-Caching**: Fallback quick links from Google Firestore are pre-cached in Redis during the FastAPI startup lifespan hook, eliminating database queries at query time.
@@ -19,7 +19,7 @@ GN Saarthi is a production-ready, AI-powered college assistant chatbot and admin
 
 ---
 
-## 📸 App Screenshots
+## App Screenshots
 
 
 
@@ -32,58 +32,38 @@ GN Saarthi is a production-ready, AI-powered college assistant chatbot and admin
 ### 3. Secure Domain-Locked Login
 ![Login Page](screenshots/login_page.png)
 
-### 4. Reference Documents Portal
-![Reference Docs](screenshots/referece_docs.png)
 
 ---
 
-## 🔄 Core Agent & RAG Architecture
+## Core Agent & RAG Architecture
 
 The following diagram details the workflow from a user's browser query through the LlamaIndex `FunctionAgent`, Redis caching layer, Qdrant hybrid retrieval, and final citation filtering.
 
 ```mermaid
-graph TD
-    A[User Input Query] --> B[FastAPI /chat/stream]
-    B --> C[QueryService]
-
-    %% Context Preparation
-    C --> D[Load Conversation Context]
-    D --> D1[Redis: Session History & Summary]
-    D --> D2[Redis: Cached Quick Links]
-
-    D1 --> E[LlamaIndex FunctionAgent]
-    D2 --> E
-
-    %% Agent Decision
-    E --> F{Need Document Retrieval?}
-
-    %% Retrieval Pipeline
-    F -- Yes --> G[retrieve_documents Tool]
-    G --> H[SmartRetriever]
-
-    H --> I[Vertex AI<br/>text-embedding-004]
-    H --> J[FastEmbed<br/>BM42 Sparse Encoder]
-
-    I --> K[Qdrant Cloud<br/>RRF Fusion Search]
-    J --> K
-
-    K --> G
-    G --> E
-
-    %% Direct Response
-    F -- No --> L[Generate Response]
-    E --> L
-
-    %% Streaming Pipeline
-    L --> M[Stream SSE Response]
-    M --> N[Extract & Deduplicate Citations]
-    N --> O[Send Referenced Document Cards]
-    O --> P[Update Redis<br/>Save Conversation + Reset TTL]
+flowchart TD
+    A[User query] --> B[API layer<br/>FastAPI + QueryService]
+    B --> C[Load session history<br/>Redis: history & summary]
+    C --> D[LlamaIndex agent<br/>Decides next action]
+    
+    %% Decision Node
+    D --> E{Need a tool?}
+    
+    %% Tool Execution Loops
+    E -->|retrieve_documents| F[retrieve_documents<br/>SmartRetriever]
+    F --> D
+    
+    E -->|get_quick_links| G[get_quick_links<br/>Firestore lookup]
+    G --> D
+    
+    %% Linear Downward Flow
+    E -->|no tool needed| H[Generate response]
+    H --> I[Stream SSE tokens]
+    I --> J[Process citations<br/>Dedupe & send doc cards]
+    J --> K[Update session<br/>Save conversation, reset TTL]
 ```
-
 ---
 
-## 🔍 Hybrid Search Retriever Process Flow
+## Hybrid Search Retriever Process Flow
 
 The retrieval step utilizes `SmartRetriever` to perform a highly accurate hybrid search, combining semantic dense vector search with term-frequency-based sparse keyword search. This process runs entirely on the Qdrant Cloud server using Reciprocal Rank Fusion (RRF).
 
@@ -114,7 +94,85 @@ graph TD
 
 ---
 
-## 🛠️ Technology Stack
+## Document Ingestion Pipeline
+
+The ingestion pipeline enables administrators to securely upload, parse, encode, and index reference PDFs into the RAG vector store and database registry.
+
+```mermaid
+graph TD
+    Admin[Admin: Upload PDF File] --> Upload[FastAPI: /documents/upload]
+    Upload --> GCS[Upload Original PDF to GCS]
+    Upload --> Process[ingestion_service: process_document]
+    
+    %% PDF Parsing Stage
+    Process --> Parse[pdf_parser: extract_text]
+    Parse --> ParseCheck{Embedded text exists?}
+    ParseCheck -- Yes --> Extract[Extract PDF text directly]
+    ParseCheck -- No --> OCR[Convert page to image & run Gemini OCR]
+    Extract --> Chunk[Create Text Chunks & metadata]
+    OCR --> Chunk
+    
+    %% Embedding Generation Stage
+    Chunk --> Dense[generate_dense_embeddings]
+    Chunk --> Sparse[generate_sparse_embeddings]
+    
+    Dense --> Vertex[Vertex AI: text-embedding-004<br/>Concurrently in ThreadPool]
+    Sparse --> FastEmbed[FastEmbed Local Cache:<br/>bm42-all-minilm-l6-v2-attentions]
+    
+    %% Storage Stage
+    Vertex --> Index[Upload Points to Qdrant Cloud<br/>Collection: college_docs_v2]
+    FastEmbed --> Index
+    
+    Index --> Registry[Register Document to Firestore<br/>Collection: documents]
+```
+
+### Ingestion Stages:
+1. **Document Upload & GCS Backup**: The administrator uploads a PDF file through the Admin Console. The raw PDF is immediately uploaded to Google Cloud Storage (GCS) to act as a source document backup.
+2. **Hybrid Text Extraction**:
+   * The PDF parser attempts to read the text directly from the digital PDF stream.
+   * If a page is scanned or contains image-only text, the parser renders the page as a high-resolution image and passes it to the **Gemini OCR Service** (`GeminiOCRProvider`) to extract the layout-aware text.
+3. **Metadata Chunking**: The extracted text is split into sequential chunks, each mapped to its original source name, page number, GCS URI, and the document's unique UUID (`doc_id`).
+4. **Concurrent Multi-Vector Generation**:
+   * **Dense Embeddings**: Chunks are processed concurrently via Vertex AI's `text-embedding-004` model using a multi-threaded pool executor.
+   * **Sparse Embeddings**: Sparse BM42 weights are generated locally using the cached `fastembed` instance.
+5. **Qdrant Indexing**: The dense query vectors, sparse BM42 weights, and text payload are uploaded to Qdrant Cloud under the `college_docs_v2` collection.
+6. **Firestore Registry**: On success, the document metadata (UUID, filename, chunk count, file size, GCS link) is written to Google Firestore's `documents` collection for administrative tracking and deletions.
+
+## Session Memory Service (SessionService)
+
+The chat memory system uses `SessionService` backed by Redis to manage conversation history, execute rolling context summaries, and enforce strict token budget thresholds to prevent context window bloat.
+
+```mermaid
+graph TD
+    Query[User Message] --> SessionCheck[SessionService: get_session_data]
+    SessionCheck --> Fetch[Fetch JSON Payload from Redis]
+    Fetch --> Context[Build ChatHistory Context for Agent]
+    
+    %% Update pipeline
+    Context --> Run[Agent Generates Answer]
+    Run --> Save[SessionService: add_turn]
+    Save --> Append[Append User & Bot Turn to History List]
+    Append --> TokenEstimate[Estimate Token Usage]
+    TokenEstimate --> TokenCheck{Exceeds SESSION_TOKEN_LIMIT?}
+    
+    %% Eviction
+    TokenCheck -- Yes --> Evict[Evict Oldest Chat Turn]
+    Evict --> Summarize[Summarize Evicted Turn via Gemini]
+    Summarize --> Combine[Fold into Rolling Summary String]
+    Combine --> SaveRedis[Save History + Summary to Redis with TTL]
+    
+    TokenCheck -- No --> SaveRedis
+```
+
+### Key Components:
+1. **Dynamic Session Caching**: Chat histories are stored as serialized JSON payloads in Redis. Each interaction automatically updates the session value and refreshes the cache TTL (`SESSION_TTL_SECONDS`).
+2. **Context Token Estimation**: Approximates token consumption of the user query and assistant response (`len(text) // 4`). 
+3. **Rolling Summarization**: When the estimated token count of the conversation exceeds the configured limit (`SESSION_TOKEN_LIMIT`), the service evicts the oldest turn, passes it to the Gemini LLM with instructions to update the summary, and prepends the resulting rolling summary to the conversation context.
+4. **TTL Session Lifespan**: Cleans up inactive sessions automatically, freeing database memory once the session TTL expires.
+
+---
+
+## Technology Stack
 
 | Tier | Technology | Description |
 |---|---|---|
@@ -132,7 +190,7 @@ graph TD
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 ├── backend/
@@ -150,6 +208,7 @@ graph TD
 │   │   └── services/           # Business logic
 │   │       ├── auth_service.py      # Firebase token verification
 │   │       ├── ingestion_service.py # Document parser & vector DB coordinator
+│   │       ├── llm.py               # Gemini config and prompts
 │   │       ├── ocr_service.py       # Modern google-genai Gemini OCR Provider
 │   │       ├── query_service.py     # Agentic RAG flow & citation aggregator
 │   │       └── session_service.py   # Redis session store & summary updates
@@ -168,7 +227,7 @@ graph TD
 
 ---
 
-## ⚙️ Local Setup and Installation
+## Local Setup and Installation
 
 ### Prerequisites
 * Python 3.13+
@@ -255,7 +314,7 @@ graph TD
 
 ---
 
-## 🔒 Security & Admin Controls
+## Security & Admin Controls
 
 * **Domain Lock**: Users must authenticate using a Firebase account matching the `@iitgn.ac.in` domain. All other emails are rejected.
 * **Role Verification**: Admin endpoints (document upload, document deletion, fallback directory management) require user claims to have `role === 'admin'`.
