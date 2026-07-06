@@ -73,12 +73,7 @@ async def create_quick_link(
         # Save to Firestore
         db.collection("quick_links").document(link_id).set(doc_data)
         
-        # Invalidate the memory cache in RAG service when links are modified
-        try:
-            from app.services.query_service import invalidate_links_cache
-            await invalidate_links_cache()
-        except Exception as cache_err:
-            logger.warning(f"Failed to invalidate quick links cache: {cache_err}")
+
             
         return QuickLinkResponse(
             id=link_id,
@@ -126,12 +121,7 @@ async def update_quick_link(
         # Update Firestore document
         doc_ref.set(doc_data)
         
-        # Invalidate cache
-        try:
-            from app.services.query_service import invalidate_links_cache
-            await invalidate_links_cache()
-        except Exception as cache_err:
-            logger.warning(f"Failed to invalidate quick links cache: {cache_err}")
+
             
         return QuickLinkResponse(
             id=link_id,
@@ -168,12 +158,7 @@ async def delete_quick_link(
             
         doc_ref.delete()
         
-        # Invalidate cache
-        try:
-            from app.services.query_service import invalidate_links_cache
-            await invalidate_links_cache()
-        except Exception as cache_err:
-            logger.warning(f"Failed to invalidate quick links cache: {cache_err}")
+
             
         return {"success": True, "message": f"Quick link {link_id} deleted successfully."}
     except HTTPException as he:

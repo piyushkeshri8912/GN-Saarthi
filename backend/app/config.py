@@ -4,17 +4,17 @@ import json
 import os
 
 class Settings(BaseSettings):
-    GCP_PROJECT_ID: str = "gn-saarthi"
-    GCP_REGION: str = "us-central1"
+    GCP_PROJECT_ID: str 
+    GCP_REGION: str 
     GCS_BUCKET_NAME: str
     QDRANT_URL: str
     QDRANT_API_KEY: str
-    QDRANT_COLLECTION_NAME: str = "college_docs"
+    QDRANT_COLLECTION_NAME: str 
     FIREBASE_SERVICE_ACCOUNT_JSON: Optional[str] = None
-    VERTEX_AI_LOCATION: str = "us-central1"
-    ALLOWED_DOMAIN: str = "iitgn.ac.in"
+    VERTEX_AI_LOCATION: str
+    ALLOWED_DOMAIN: str 
     TEMP_TEST_EMAIL: Optional[str] = ""
-    FIRESTORE_DATABASE_ID: str = "(default)"
+    FIRESTORE_DATABASE_ID: str
     ALLOWED_CORS_ORIGINS: Optional[str] = ""
 
     # Retrieval tuning
@@ -23,31 +23,27 @@ class Settings(BaseSettings):
     RELEVANCE_THRESHOLD: float = 0.50
 
     # Hybrid search (BM42 dense + sparse fusion)
-    HYBRID_SEARCH_ENABLED: bool = True
     HYBRID_DENSE_TOP_K: int = 40
     HYBRID_SPARSE_TOP_K: int = 75
     HYBRID_FUSION_TOP_K: int = 15
     HYBRID_RRF_K: int = 60
 
-    # Redis
-    REDIS_URL: str = ""
+    BM42_MODEL: str = "Qdrant/bm42-all-minilm-l6-v2-attentions"
+    QDRANT_DENSE_VECTOR_NAME: Optional[str] = None
+    QDRANT_SPARSE_VECTOR_NAME: str = "bm42"
 
-    @property
-    def secure_redis_url(self) -> str:
-        if not self.REDIS_URL:
-            return ""
-        if self.REDIS_URL.startswith("redis://"):
-            return "rediss://" + self.REDIS_URL[8:]
-        return self.REDIS_URL
+    # Redis
+    REDIS_URL: str
 
     # Session settings
-    SESSION_MAX_TURNS: int = 3
     SESSION_TOKEN_LIMIT: int = 3000
     SESSION_TTL_SECONDS: int = 86400
 
     # LLM
     LLM_MODEL: str = "gemini-2.5-flash"
     LLM_TEMPERATURE: float = 0.2
+    EMBEDDING_MODEL: str = "text-embedding-004"
+    EMBEDDING_DIMENSION: int = 768
 
     model_config = SettingsConfigDict(
         env_file=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"),

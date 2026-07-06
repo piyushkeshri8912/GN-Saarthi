@@ -101,10 +101,12 @@ async def mock_query_stream(self, query: str, session_id = None):
 
 @pytest.fixture(autouse=True)
 def mock_retriever_dependencies():
-    with patch("app.pipelines.retriever.generate_query_embedding") as mock_embed, \
+    with patch("app.pipelines.retriever.generate_dense_query_embedding") as mock_dense, \
+         patch("app.pipelines.retriever.generate_sparse_query_embedding") as mock_sparse, \
          patch("app.pipelines.retriever.AsyncQdrantClient") as mock_qdrant_class, \
          patch("app.services.query_service.QueryService.query_stream", mock_query_stream):
-        mock_embed.return_value = [0.1] * 768
+        mock_dense.return_value = [0.1] * 768
+        mock_sparse.return_value = None
         mock_client = MagicMock()
         
         async def mock_get_collection(*args, **kwargs):
@@ -220,7 +222,7 @@ async def test_generic_query_bypasses_retrieval():
 
 @pytest.mark.asyncio
 @patch("app.services.session_service.redis.from_url")
-@patch("app.services.session_service.update_rolling_summary_async")
+@patch("app.services.session_service.summarize_evicted_turn")
 async def test_session_store_operations(mock_update_summary, mock_from_url):
     mock_update_summary.return_value = "Mocked rolling summary"
     

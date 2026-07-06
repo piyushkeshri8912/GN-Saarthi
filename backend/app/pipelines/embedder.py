@@ -1,52 +1,45 @@
 from llama_index.embeddings.google_genai import GoogleGenAIEmbedding
 from app.config import settings
 from typing import List
+from fastembed import SparseTextEmbedding
+from qdrant_client import models
 import os
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
-# Set Vertex AI env configurations required by google-genai SDK
 os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "true"
 os.environ["GOOGLE_CLOUD_PROJECT"] = settings.GCP_PROJECT_ID
 os.environ["GOOGLE_CLOUD_LOCATION"] = settings.VERTEX_AI_LOCATION
 
-_embeddings_client = None
 
-def get_embeddings_client() -> GoogleGenAIEmbedding:
-    """
-    Returns a singleton instance of the GoogleGenAIEmbedding client.
-    """
-    global _embeddings_client
-    if _embeddings_client is None:
-        _embeddings_client = GoogleGenAIEmbedding(model_name="text-embedding-004")
-    return _embeddings_client
+class PatchedGoogleGenAIEmbedding(GoogleGenAIEmbedding):
+    def _get_text_embeddings(self, texts: List[str]) -> List[List[float]]:
+        with ThreadPoolExecutor(max_workers=min(8, len(texts))) as executor:
+            return list(executor.map(self._get_text_embedding, texts))
 
-def generate_embeddings(texts: List[str]) -> List[List[float]]:
-    """
-    Generates embeddings for a list of texts using GoogleGenAIEmbedding.
-    """
+    async def _aget_text_embeddings(self, texts: List[str]) -> List[List[float]]:
+        tasks = [self._aget_text_embedding(text) for text in texts]
+        return await asyncio.gather(*tasks)
+
+
+embedding_client = PatchedGoogleGenAIEmbedding(
+    model_name=settings.EMBEDDING_MODEL,
+)
+
+sparse_embedder = SparseTextEmbedding(
+    model_name=settings.BM42_MODEL,
+)
+
+def generate_dense_embeddings(texts: List[str]) -> List[List[float]]:
     if not texts:
         return []
-    client = get_embeddings_client()
-    return client.get_text_embedding_batch(texts)
+    return embedding_client.get_text_embedding_batch(texts)
 
-def generate_query_embedding(text: str) -> List[float]:
-    """
-    Generates the embedding representation for a single search query.
-    """
-    client = get_embeddings_client()
-    return client.get_query_embedding(text)
+def generate_dense_query_embedding(text: str) -> List[float]:
+    return embedding_client.get_query_embedding(text)
 
-_embedding_dimension = None
-
-def get_embedding_dimension() -> int:
-    """
-    Dynamically fetches and caches the embedding dimension of the configured model.
-    Falls back to 768 on error.
-    """
-    global _embedding_dimension
-    if _embedding_dimension is None:
-        try:
-            client = get_embeddings_client()
-            _embedding_dimension = len(client.get_query_embedding("t"))
-        except Exception:
-            return 768
-    return _embedding_dimension
+def generate_sparse_query_embedding(text: str) -> models.SparseVector | None:
+    sparse_embedding = next(sparse_embedder.query_embed(text), None)
+    if sparse_embedding is None:
+        return None
+    return sparse_embedding.as_object()

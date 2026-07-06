@@ -1,13 +1,17 @@
+import os
 import time
 import logging
 from abc import ABC, abstractmethod
 from typing import List, Tuple
 from google import genai
 from google.genai import types
-from google.oauth2 import service_account
 from app.config import settings
 
 logger = logging.getLogger(__name__)
+
+os.environ["GOOGLE_GENAI_USE_VERTEXAI"] = "true"
+os.environ["GOOGLE_CLOUD_PROJECT"] = settings.GCP_PROJECT_ID
+os.environ["GOOGLE_CLOUD_LOCATION"] = settings.VERTEX_AI_LOCATION
 
 class BaseOCRProvider(ABC):
     @abstractmethod
@@ -32,17 +36,7 @@ class GeminiOCRProvider(BaseOCRProvider):
     def _get_client(self) -> genai.Client:
         if self._client is None:
             try:
-                sa_info = settings.firebase_service_account_dict
-                gcp_cred = service_account.Credentials.from_service_account_info(
-                    sa_info,
-                    scopes=["https://www.googleapis.com/auth/cloud-platform"]
-                )
-                self._client = genai.Client(
-                    vertexai=True,
-                    project=settings.GCP_PROJECT_ID,
-                    location=settings.VERTEX_AI_LOCATION,
-                    credentials=gcp_cred
-                )
+                self._client = genai.Client()
             except Exception as e:
                 logger.error(f"Failed to initialize google-genai Client for OCR provider: {e}")
                 raise
